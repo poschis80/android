@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.design.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <android.support.design.widget.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/main_app_appbarlayout">
+
+        <android.support.design.widget.TabLayout
+            android:id="@+id/main_app_tablayout"
+            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            app:tabGravity="center"
+            android:layout_gravity="center_horizontal"
+            app:tabIndicatorColor="@android:color/white"/>
+
+    </android.support.design.widget.AppBarLayout>
+
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="xpshome.net.components.CoordinatorActionBehavior$LinearLayoutTranslateUpBehavior"
+        android:orientation="horizontal">
+
+
+
+        <android.support.v4.view.ViewPager
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:id="@+id/main_app_viewpager">
+
+        </android.support.v4.view.ViewPager>
+
+    </LinearLayout>
+</android.support.design.widget.CoordinatorLayout>
