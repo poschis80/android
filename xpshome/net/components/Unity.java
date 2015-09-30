@@ -1,8 +1,14 @@
 package xpshome.net.components;
 
+import android.app.Application;
+import android.content.Context;
 import android.support.annotation.NonNull;
+import android.util.Pair;
+
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
+import java.util.Objects;
 
 /**
  * Created by Christian Poschigner on 25.09.2015.
@@ -18,12 +24,19 @@ public class Unity {
     }
 
     @SuppressWarnings("unused")
+    public static Unity Create(Context context) {
+        Unity i = Instance();
+        i.appContext = context;
+        return i;
+    }
+
+    @SuppressWarnings("unused")
     public static class SingletonBase {
         public void init() {}
         public void destroy() {}
     }
 
-
+    protected Context appContext;
     private final Object lockObject;
     private HashMap<Class<?>, Object> classes;
     protected Unity() {
@@ -33,11 +46,20 @@ public class Unity {
 
     private void instantiateNewObject(Class<?> cl) {
         try {
-            Object o = cl.getConstructors()[0].newInstance();
-            if (o instanceof SingletonBase) {
-                ((SingletonBase)o).init();
+            Constructor ctor;
+            Object o = null;
+            Pair<Boolean, Constructor> res = findBestSuitableConstructor(cl);
+            if (res.first) {
+                o = res.second.newInstance();
+            } else if (!res.first && res.second != null) {
+                o = res.second.newInstance(appContext);
             }
-            classes.put(cl, o);
+            if (o != null) {
+                if (o instanceof SingletonBase) {
+                    ((SingletonBase) o).init();
+                }
+                classes.put(cl, o);
+            }
 
         } catch (InstantiationException e) {
             e.printStackTrace();
@@ -48,10 +70,28 @@ public class Unity {
         }
     }
 
+    private Pair<Boolean, Constructor> findBestSuitableConstructor(Class<?> cl) {
+        Constructor[] ctors =  cl.getConstructors();
+        for (Constructor c : ctors) {
+            Class<?>[] params = c.getParameterTypes();
+            if (params == null || params.length <= 0) { // return default ctor
+                return new Pair<>(true, c);
+            } else {
+                if (params.length == 1 && params[0].getName().compareTo(Context.class.getName()) == 0) { // return ctor with one param of type Context
+                    return new Pair<>(false, c);
+                }
+            }
+        }
+        return new Pair<>(false, null);
+    }
+
 
 
     @SuppressWarnings("unused")
-    public Unity register(@NonNull Class<?> object) {
+    public Unity register(Class<?> object) {
+        if (object == null) {
+            return this;
+        }
         synchronized (lockObject) {
             if (!classes.containsKey(object)) {
                 classes.put(object, null);
@@ -61,13 +101,20 @@ public class Unity {
     }
 
     @SuppressWarnings("unused")
-    public Unity register(@NonNull Class<?> object, @NonNull Object instance) {
+    public Unity register(Class<?> object, Object instance) {
+        if (object == null || instance == null) {
+            return this;
+        }
         classes.put(object, instance);
         return this;
     }
 
     @SuppressWarnings("unused")
-    public <T> Unity register(@NonNull T object) {
+    public <T> Unity register(T object) {
+        if (object == null) {
+            return this;
+        }
+
         if (!classes.containsKey(object.getClass())) {
             classes.put(object.getClass(), object);
         }
@@ -75,7 +122,11 @@ public class Unity {
     }
 
     @SuppressWarnings("unused")
-    public Unity registerClasses(@NonNull Class<?>... objects) {
+    public Unity registerClasses(Class<?>... objects) {
+        if (objects == null) {
+            return this;
+        }
+
         for (Class<?> c : objects) {
             register(c);
         }
@@ -96,7 +147,11 @@ public class Unity {
     }
 
     @SuppressWarnings("unused")
-    public Unity unregister(@NonNull Class<?> object) {
+    public Unity unregister(Class<?> object) {
+        if (object == null) {
+            return this;
+        }
+
         synchronized (lockObject) {
             Object o = classes.get(object);
             if (o != null) {
@@ -120,7 +175,10 @@ public class Unity {
     }
 
     @SuppressWarnings("unused unchecked")
-    public final <T> T getInstance(@NonNull Class<T> object) {
+    public final <T> T getInstance(Class<T> object) {
+        if (object == null) {
+            return null;
+        }
         synchronized (lockObject) {
             if (classes.containsKey(object)) {
                 if (classes.get(object) == null) {
@@ -133,7 +191,11 @@ public class Unity {
     }
 
     @SuppressWarnings("unused unchecked")
-    public final <T> T getInstanceForceRegister(@NonNull Class<T> object) {
+    public final <T> T getInstanceForceRegister(Class<T> object) {
+        if (object == null) {
+            return null;
+        }
+
         synchronized (lockObject) {
             if (!classes.containsKey(object)) {
                 register(object);
