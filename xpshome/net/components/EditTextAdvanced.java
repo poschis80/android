@@ -14,6 +14,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.security.InvalidParameterException;
 
+import xpshome.net.util.VersionCheck;
+
 /**
  * Created by Christian Poschinger on 18.09.2015.
  * Class to extend the basic TextInputLayout with icons and EditText field to provide a more flexible input field.
@@ -47,8 +49,21 @@ public class EditTextAdvanced extends android.support.design.widget.TextInputLay
         initialize();
     }
 
+    // TODO : fix build error with 3rd parameter of ctor from super class
+    //not available below version 22
     public EditTextAdvanced(Context context, AttributeSet attrs, int defStyleAttr) {
-        super(context, attrs, defStyleAttr);
+        super(context, attrs/*, defStyleAttr*/);
+        try {
+            if (VersionCheck.designVersion(VersionCheck.Action.EQUAL_OR_LESS, 21)) {
+                //super(context, attrs, defStyleAttr);
+            } else {
+
+            }
+        } catch (NoSuchFieldException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        }
         initialize();
     }
 

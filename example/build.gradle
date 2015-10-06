@@ -1,0 +1,174 @@
+apply plugin: 'com.android.application'
+apply plugin: 'idea'
+apply plugin: 'android-apt'
+
+task svnversion {
+    description 'Get SVN revision number.'
+    new ByteArrayOutputStream().withStream { os ->
+        def result = exec {
+            executable = 'svn'
+            args = ['info']
+            standardOutput = os
+        }
+        def outputAsString = os.toString()
+        def matchLastChangedRev = outputAsString =~ /Last Changed Rev: (\d+)/
+        ext.revid = "${matchLastChangedRev[0][1]}"
+    }
+}
+
+def MajorVersion = 0
+def MinorVersion = 3
+def BuildVersion = svnversion.revid
+
+def CompatVersion = "7;22"
+def DesignVersion = "22"
+def RecycleVersion = "7;21"
+
+android {
+    compileSdkVersion 21
+    buildToolsVersion "21.1.2"
+
+    defaultConfig {
+        applicationId "xpshome.net.example_grade_file"
+        minSdkVersion 17
+        targetSdkVersion 21
+        versionCode 1
+        versionName "$MajorVersion.$MinorVersion.$BuildVersion"
+        multiDexEnabled false
+
+        buildConfigField "String","COMPAT_VERSION","$CompatVersion"
+        buildConfigField "String","DESIGN_VERSION","$DesignVersion"
+        buildConfigField "String","RECYCLE_VERSION","$RecycleVersion"
+    }
+
+    signingConfigs {
+        debug {
+            storeFile file("keystore/debug.keystore")
+            storePassword "your password!"
+            keyAlias "your alias"
+            keyPassword "your key password!"
+        }
+        release {
+            storeFile file("keystore/debug.keystore")
+            storePassword "your password!"
+            keyAlias "your alias"
+            keyPassword "your key password!"
+        }
+    }
+
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+	        debuggable true
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+
+        mock {
+            signingConfig signingConfigs.debug
+            debuggable true
+        }
+        staging {
+            initWith release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
+
+    productFlavors {
+        master {
+            applicationId "xpshome.net.master.myapp"
+            versionName "$MajorVersion.$MinorVersion.$BuildVersion-master"
+        }
+        demobuild {
+            applicationId "xpshome.net.demo.myapp"
+            versionName "$MajorVersion.$MinorVersion.$BuildVersion-demo"
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'src/main/AndroidManifest.xml'
+            java.srcDirs = ['src/main/java', 'build/generated/source/apt/${variant.dirName}']
+            resources.srcDirs = ['src/main/res']
+            res.srcDirs = ['src/main/res']
+            assets.srcDirs = ['assets', 'src/main/assets', 'src/main/assets/']
+        }
+        debug {
+            manifest.srcFile 'src/debug/AndroidManifest.xml'
+        }
+        test {
+            manifest.srcFile 'src/debug/AndroidManifest.xml'
+        }
+        mock {
+            manifest.srcFile 'src/debug/AndroidManifest.xml'
+        }
+    }
+
+    packagingOptions {
+        exclude 'META-INF/DEPENDENCIES.txt'
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/notice.txt'
+        exclude 'META-INF/license.txt'
+        exclude 'META-INF/dependencies.txt'
+        exclude 'META-INF/LGPL2.1'
+        exclude 'LICENSE.txt'
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+}
+
+apt {
+    arguments {
+        androidManifestFile variant.outputs[0].processResources.manifestFile
+        resourcePackageName 'xpshome.net.master.myapp'
+    }
+}
+
+def AAVersion = '3.3.1'
+def springAndroidVersion = '1.0.1.RELEASE'
+def jacksonVersion = '2.4.1'
+def commonsVersion = '3.3.2'
+def playServicesVersion =  '7.5.0'
+
+dependencies {
+    compile fileTree(include: ['*.jar'], dir: 'libs')
+
+    testCompile 'junit:junit:4.12'
+    testCompile "org.mockito:mockito-core:1.9.5"
+    testCompile "org.robolectric:robolectric:3.0-rc3"
+    testCompile 'org.robolectric:shadows-httpclient:3.0-rc3'
+    testCompile 'org.hamcrest:hamcrest-core:1.3'
+    testCompile 'org.hamcrest:hamcrest-library:1.3'
+    testCompile 'org.hamcrest:hamcrest-integration:1.3'
+    // for geofences
+    compile 'com.cocoahero.android:geojson:1.0.1@jar'
+
+    compile "com.google.android.gms:play-services-maps:$playServicesVersion"
+    compile "com.google.android.gms:play-services-analytics:$playServicesVersion"
+    compile 'com.android.support:appcompat-v7:22.2.1'
+    compile 'com.android.support:design:22.2.0'
+    apt "org.androidannotations:androidannotations:$AAVersion"
+    compile "org.androidannotations:androidannotations-api:$AAVersion"
+    compile "org.springframework.android:spring-android-rest-template:$springAndroidVersion"
+    compile "com.fasterxml.jackson.core:jackson-core:$jacksonVersion"
+    compile "com.fasterxml.jackson.core:jackson-annotations:$jacksonVersion"
+    compile "com.fasterxml.jackson.core:jackson-databind:$jacksonVersion"
+    compile "org.apache.commons:commons-lang3:$commonsVersion"
+    compile 'com.google.maps.android:android-maps-utils:0.3.4'
+    compile 'com.android.support:recyclerview-v7:21.0.3'
+    compile 'com.astuetz:pagerslidingtabstrip:1.0.1'
+    compile 'com.github.gfx.util.encrypt:android-encrypt-utils:2.0.0'
+    compile('org.apache.commons:commons-csv:1.1')
+}
