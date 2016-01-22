@@ -1,11 +1,10 @@
 package xpshome.net.util;
 
 import android.os.Build;
-import android.test.suitebuilder.annotation.Suppress;
 
 import java.lang.reflect.Field;
 
-import cc.catalysts.kapsch.mcc_android.BuildConfig;
+import net.ktc.mts.BuildConfig;
 
 /**
  * Created by Christian Poschinger on 06.10.2015.

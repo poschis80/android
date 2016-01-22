@@ -2,6 +2,13 @@ package xpshome.net.util;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.support.annotation.Nullable;
+import android.util.Base64;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -12,8 +19,13 @@ import java.util.Set;
  * Created by Christian Poschinger on 09.09.2015.
  */
 public class SettingsManager {
+
+    // TODO : add keystore feature to store cipher keys for encrypted content
+    // TODO : add sqlite db as optional storage for settings/preferences
+
     private static final String TAG = "SettingsManager";
     public static final String MASTER_PREFERENCES = "master_shared_preferences";
+    private static final String SettingsCryptoAlias = "XPSHOME_SCA";
     private SharedPreferences sharedPref;
     private Context context;
 
@@ -44,6 +56,11 @@ public class SettingsManager {
         return null;
     }
 
+    @SuppressWarnings("unused")
+    public boolean preferenceGroupExists(String group) {
+        return customPreferences.containsKey(group);
+    }
+
     private int createNewSharedPreferences(final String name) {
         if (customPreferences.containsKey(name)) { return RESULT_EXISTING; }
 
@@ -63,14 +80,15 @@ public class SettingsManager {
         return !customPreferences.containsKey(name) && createNewSharedPreferences(name) == RESULT_OK;
     }
 
+
     @SuppressWarnings("unused")
-    public <T> T getValueFromPreferences(final String key, T defaultValue) {
+    public <T> T getValueFromPreferences(final String key, T defaultValue, boolean decrypt, @Nullable String cryptoAlias) {
         if (sharedPref.contains(key)) {
-            return getValueFromPreferences(key, defaultValue, sharedPref);
+            return getValueFromPreferences(key, defaultValue, sharedPref, decrypt, cryptoAlias);
         } else {
             for (SharedPreferences p : customPreferences.values()) {
                 if (p.contains(key)) {
-                    return getValueFromPreferences(key, defaultValue, p);
+                    return getValueFromPreferences(key, defaultValue, p, decrypt, cryptoAlias);
                 }
             }
         }
@@ -78,48 +96,99 @@ public class SettingsManager {
     }
 
     @SuppressWarnings("unused")
-    public <T> T getValueFromPreferences(final String key, T defaultValue, final String preferenceGroup) {
-        if (preferenceGroup == null || preferenceGroup.isEmpty()) {
-            return getValueFromPreferences(key, defaultValue, sharedPref);
-        } else if (customPreferences.containsKey(preferenceGroup)) {
-            return getValueFromPreferences(key, defaultValue, customPreferences.get(preferenceGroup));
-        }
-        return defaultValue;
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T getValueFromPreferences(final String key, T defaultValue, SharedPreferences preferences) {
-        Map<String, ?> prefs = preferences.getAll();
-        if (prefs.containsKey(key)) {
-            return (T) prefs.get(key);
+    public <T> T getValueFromPreferences(final String key, T defaultValue) {
+        if (sharedPref.contains(key)) {
+            return getValueFromPreferences(key, defaultValue, sharedPref, false, null);
+        } else {
+            for (SharedPreferences p : customPreferences.values()) {
+                if (p.contains(key)) {
+                    return getValueFromPreferences(key, defaultValue, p, false, null);
+                }
+            }
         }
         return defaultValue;
     }
 
     @SuppressWarnings("unused")
+    public <T> T getValueFromPreferences(final String key, T defaultValue, final String preferenceGroup, boolean decrypt, @Nullable String cryptoAlias) {
+        if (preferenceGroup == null || preferenceGroup.isEmpty()) {
+            return getValueFromPreferences(key, defaultValue, sharedPref, decrypt, cryptoAlias);
+        } else if (customPreferences.containsKey(preferenceGroup)) {
+            return getValueFromPreferences(key, defaultValue, customPreferences.get(preferenceGroup), decrypt, cryptoAlias);
+        }
+        return defaultValue;
+    }
+
+    @SuppressWarnings("unused")
+    public <T> T getValueFromPreferences(final String key, T defaultValue, final String preferenceGroup) {
+        if (preferenceGroup == null || preferenceGroup.isEmpty()) {
+            return getValueFromPreferences(key, defaultValue, sharedPref, false, null);
+        } else if (customPreferences.containsKey(preferenceGroup)) {
+            return getValueFromPreferences(key, defaultValue, customPreferences.get(preferenceGroup), false, null);
+        }
+        return defaultValue;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T getValueFromPreferences(final String key, T defaultValue, SharedPreferences preferences, boolean decrypt, String cryptoAlias) {
+        Map<String, ?> prefs = preferences.getAll();
+        if (prefs.containsKey(key)) {
+            if (decrypt) {
+                byte[] enc = Base64.decode((String)prefs.get(key), Base64.DEFAULT);
+                byte[] raw = Security.NoUserInteraction.decrypt(cryptoAlias != null ? cryptoAlias : SettingsCryptoAlias, enc);
+                return (T) Security.Util.fromByteArray(raw, defaultValue);
+            } else {
+                if (defaultValue instanceof byte[]) {
+                    return (T) Base64.decode((String)prefs.get(key), Base64.DEFAULT);
+                }
+                return (T) prefs.get(key);
+            }
+        }
+        return defaultValue;
+    }
+
+    @SuppressWarnings("unused")
+    public <T> boolean storeValueInSharedPreferences(final String key, T value, boolean encrypt, @Nullable String cryptoAlias) {
+        return storeValueInSharedPreferences(key, value, null, encrypt, cryptoAlias);
+    }
+
+    @SuppressWarnings("unused")
     public <T> boolean storeValueInSharedPreferences(final String key, T value) {
-        return storeValueInSharedPreferences(key, value, null);
+        return storeValueInSharedPreferences(key, value, null, false, null);
+    }
+
+    @SuppressWarnings("unused")
+    public <T> boolean storeValueInSharedPreferences(final String key, T value, final String preferencesGroup) {
+        return storeValueInSharedPreferences(key, value, preferencesGroup, false, null);
     }
 
     @SuppressWarnings("unused unchecked")
-    public <T> boolean storeValueInSharedPreferences(final String key, T value, final String preferencesGroup) {
+    public <T> boolean storeValueInSharedPreferences(final String key, T value, final String preferencesGroup, boolean encrypt, @Nullable String cryptoAlias) {
         SharedPreferences p = getPreferencesFor(preferencesGroup);
         if (p != null) {
             SharedPreferences.Editor editor = p.edit();
-            if (value instanceof Boolean) {
-                editor.putBoolean(key, (Boolean) value);
-            } else if (value instanceof Long) {
-                editor.putLong(key, (Long) value);
-            } else if (value instanceof Integer) {
-                editor.putInt(key, (Integer) value);
-            } else if (value instanceof Float) {
-                editor.putFloat(key, (Float) value);
-            } else if (value instanceof String) {
-                editor.putString(key, (String) value);
-            } else if (value instanceof Set<?>) {
-                editor.putStringSet(key, (Set<String>) value);
+
+            if (encrypt) {
+                byte[] raw = Security.Util.toByteArray(value);
+                editor.putString(key, Base64.encodeToString(Security.NoUserInteraction.encrypt(cryptoAlias != null ? cryptoAlias : SettingsCryptoAlias, raw), Base64.DEFAULT));
             } else {
-                return false;
+                if (value instanceof Boolean) {
+                    editor.putBoolean(key, (Boolean) value);
+                } else if (value instanceof Long) {
+                    editor.putLong(key, (Long) value);
+                } else if (value instanceof Integer) {
+                    editor.putInt(key, (Integer) value);
+                } else if (value instanceof Float) {
+                    editor.putFloat(key, (Float) value);
+                } else if (value instanceof String) {
+                    editor.putString(key, (String) value);
+                } else if (value instanceof Set<?>) {
+                    editor.putStringSet(key, (Set<String>) value);
+                } else if (value instanceof byte[]) {
+                    editor.putString(key, Base64.encodeToString((byte[])value, Base64.DEFAULT));
+                } else {
+                    return false;
+                }
             }
             editor.apply();
             return true;

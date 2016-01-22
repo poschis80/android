@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.Objects;
 
 /**
- * Created by Christian Poschigner on 25.09.2015.
+ * Created by Christian Poschinger on 25.09.2015.
  */
 public class Unity {
     private static Unity instance = null;
