@@ -8,6 +8,8 @@ import android.util.Base64;
 
 import net.ktc.mts.logic.Global;
 
+import org.apache.commons.lang3.ArrayUtils;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -24,6 +26,7 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.PublicKey;
 import java.security.UnrecoverableEntryException;
 import java.security.UnrecoverableKeyException;
@@ -33,7 +36,10 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.AlgorithmParameterSpec;
 import java.security.spec.RSAKeyGenParameterSpec;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.List;
 import java.util.Set;
 
 import javax.crypto.Cipher;
@@ -50,8 +56,12 @@ import javax.security.auth.x500.X500Principal;
  * Created by Poschinger Christian on 15.01.2016.
  */
 public class Security {
+
+    // TODO : change to an more secure algorithm
+
+    public static final String DEFAULT_ALIAS = "xpshome_crypt";
     private static final String provider = "AndroidKeyStore";
-    private static final String defaultAlg = "RSA/ECB/PKCS1Padding";
+    private static final String defaultAlg = "RSA/ECB/PKCS1Padding"; //"AES/ECB/NoPadding";
     private static KeyStore keyStore = null;
     private static String keyCN = null;
     public Security(String keyCN) {
@@ -59,6 +69,7 @@ public class Security {
             keyStore = KeyStore.getInstance(provider);
             keyStore.load(null);
             this.keyCN = keyCN;
+            createNewKeyIfNotExists(DEFAULT_ALIAS);
         } catch (KeyStoreException e) {
             e.printStackTrace();
         } catch (CertificateException e) {
@@ -92,22 +103,24 @@ public class Security {
         } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.LOLLIPOP_MR1) { // <= 22
             KeyPairGeneratorSpec spec = new KeyPairGeneratorSpec.Builder(Global.getContext())
                     .setAlias(alias)
+                    //.setKeySize(1024)
                     .setSubject(new X500Principal(getPrincipalString(alias)))
-                    .setSerialNumber(BigInteger.ONE)
+                    .setSerialNumber(BigInteger.valueOf(14568))
                     .setStartDate(start.getTime())
                     .setEndDate(end.getTime())
                     .build();
             return spec;
 
-        }else {  // >= 23
+        } else {  // >= 23
             // http://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.html
 
             // Important decryption is possible only with private key
-            KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_DECRYPT)
+            KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
                 .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
+                //.setKeySize(1024)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
                 .setCertificateSubject(new X500Principal(getPrincipalString(alias)))
-                .setCertificateSerialNumber(BigInteger.ONE)
+                .setCertificateSerialNumber(BigInteger.valueOf(14568))
                 .setCertificateNotBefore(start.getTime())
                 .setCertificateNotAfter(end.getTime())
                 .build();
@@ -192,9 +205,14 @@ public class Security {
     private static PublicKey getCryptoPublicKey(String alias) {
         try {
             if (keyStore != null && keyStore.containsAlias(alias)) {
-                return keyStore.getCertificate(alias).getPublicKey();
+                KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry)keyStore.getEntry(alias, null);
+                return privateKeyEntry.getCertificate().getPublicKey();
             }
         } catch (KeyStoreException e) {
+            e.printStackTrace();
+        } catch (UnrecoverableEntryException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
         return null;
@@ -204,10 +222,13 @@ public class Security {
         try {
             if (keyStore != null && keyStore.containsAlias(alias)) {
                 try {
-                    return (PrivateKey)keyStore.getKey(alias, null);
+                    KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry)keyStore.getEntry(alias, null);
+                    return privateKeyEntry.getPrivateKey();
                 } catch (NoSuchAlgorithmException e) {
                     e.printStackTrace();
                 } catch (UnrecoverableKeyException e) {
+                    e.printStackTrace();
+                } catch (UnrecoverableEntryException e) {
                     e.printStackTrace();
                 }
             }
@@ -219,13 +240,50 @@ public class Security {
 
     private static byte[] operateWithCipher(Cipher cipher, Key key, byte[] input, int cipherMode) throws InvalidKeyException, IOException {
         if (key != null) {
-            cipher.init(cipherMode, key);
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            CipherOutputStream cos = new CipherOutputStream(bos, cipher);
-            cos.write(input);
-            return bos.toByteArray();
+            if (input.length <= 256) {  // TODO : change from RSA block cipher to RSA Key encryption/decryption and use AES for block cipher  https://www.daniweb.com/programming/software-development/threads/231092/java-encryption-rsa-block-size
+                return operateWithCipherBlock(cipher, key, input, cipherMode);
+            } else {  // encrypt in blocks with size 100
+                ArrayList<byte[]> val = divideArray(input, cipherMode == Cipher.ENCRYPT_MODE ? 100 : 256);
+                ArrayList<byte[]> res = new ArrayList<>();
+                for (byte[] b : val) {
+                    res.add(operateWithCipherBlock(cipher, key, b, cipherMode));
+                }
+                return combineArray(res);
+            }
         }
         return new byte[0];
+    }
+
+    private static ArrayList<byte[]> divideArray(byte[] input, int chunkSize) {
+        ArrayList<byte[]> ret = new ArrayList<>();
+        int size = (int)Math.ceil(input.length / (double)chunkSize);
+        int start = 0;
+        for (int i = 0 ; i < size; i++) {
+            ret.add(Arrays.copyOfRange(input, start, ((start + chunkSize) <= input.length) ? start + chunkSize : input.length));
+            start += chunkSize;
+        }
+        return ret;
+    }
+
+    private static byte[] combineArray(ArrayList<byte[]> input) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        for (byte[] b : input) {
+            try {
+                bos.write(b);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return bos.toByteArray();
+    }
+
+    private static byte[] operateWithCipherBlock(Cipher cipher, Key key, byte[] input, int cipherMode) throws InvalidKeyException, IOException {
+        cipher.init(cipherMode, key);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        CipherOutputStream cos = new CipherOutputStream(bos, cipher);
+        cos.write(input);
+        cos.close();
+        return bos.toByteArray();
     }
 
     public static class Util {
@@ -246,7 +304,7 @@ public class Security {
                 } else if (value instanceof Float) {
                     dos.writeFloat((Float) value);
                 } else if (value instanceof String) {
-                    dos.writeChars((String)value);
+                    dos.writeUTF((String)value);
                 } else {
                     return new byte[0];
                 }

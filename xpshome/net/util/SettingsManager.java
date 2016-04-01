@@ -9,11 +9,14 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileFilter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.prefs.Preferences;
 
 /**
  * Created by Christian Poschinger on 09.09.2015.
@@ -21,9 +24,11 @@ import java.util.Set;
 public class SettingsManager {
 
     // TODO : add keystore feature to store cipher keys for encrypted content
-    // TODO : add sqlite db as optional storage for settings/preferences
+    // TODO : add sqlite db as optional storage for settings/preferences  - check https://realm.io/
+    // TODO : think about synchronize read and write access of settings  (shared preferences are by default thread-safe)
 
     private static final String TAG = "SettingsManager";
+    private static final String PREF_FOLDER = "/shared_prefs/";
     public static final String MASTER_PREFERENCES = "master_shared_preferences";
     private static final String SettingsCryptoAlias = "XPSHOME_SCA";
     private SharedPreferences sharedPref;
@@ -39,6 +44,30 @@ public class SettingsManager {
                 MASTER_PREFERENCES, Context.MODE_PRIVATE);
         customPreferences = new HashMap<>();
         onChangeListeners = new ArrayList<>();
+        initializeCustomPrefFiles();
+    }
+
+    private boolean initializeCustomPrefFiles() {
+        File f = new File(context.getApplicationInfo().dataDir + PREF_FOLDER);
+        if (f.isDirectory()) {
+            File[] pf = f.listFiles(new FileFilter() {
+                @Override
+                public boolean accept(File pathname) {
+                    if (pathname.getName().endsWith(".xml") && !pathname.getName().contains(MASTER_PREFERENCES)) {
+                        return true;
+                    }
+                    return false;
+                }
+            });
+
+            for (File x : pf) {
+                createNewSharedPreferences(x.getAbsoluteFile().getName().replace(".xml", ""));
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     public static final int RESULT_OK = 0;
@@ -193,6 +222,7 @@ public class SettingsManager {
             editor.apply();
             return true;
         }
+
         return false;
     }
 
